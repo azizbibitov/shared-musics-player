@@ -1,17 +1,20 @@
-//
-//  MusicPlayerApp.swift
-//  MusicPlayer
-//
-//  Created by Aziz Bibitov on 17.04.2026.
-//
-
 import SwiftUI
 
 @main
 struct MusicPlayerApp: App {
+    @State private var player = AudioPlayerManager()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            TabView {
+                Tab("Playlists", systemImage: "music.note.list") {
+                    PlaylistsView()
+                }
+                Tab("Tracks", systemImage: "music.note") {
+                    TracksListView()
+                }
+            }
+            .environment(player)
         }
     }
 }
