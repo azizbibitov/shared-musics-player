@@ -63,11 +63,15 @@ struct PlayerView: View {
         }
         .padding(.horizontal, 32)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .onAppear {
+            player.isPlayerViewOpen = true
             if player.currentTrack?.id != track.id {
-                player.load(track)
-                player.play()
+                player.load(track, autoPlay: true)
             }
+        }
+        .onDisappear {
+            player.isPlayerViewOpen = false
         }
     }
 

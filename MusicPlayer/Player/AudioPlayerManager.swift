@@ -8,6 +8,7 @@ final class AudioPlayerManager: NSObject, AVAudioPlayerDelegate {
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 1
     var currentTrack: Track?
+    var isPlayerViewOpen = false
 
     private var player: AVAudioPlayer?
     private var timer: Timer?
@@ -48,18 +49,21 @@ final class AudioPlayerManager: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    func load(_ track: Track) {
+    func load(_ track: Track, autoPlay: Bool = false) {
         stop()
         currentTrack = track
-        do {
-            player = try AVAudioPlayer(contentsOf: track.url)
-            player?.delegate = self
-            player?.prepareToPlay()
-            duration = player?.duration ?? 1
-            currentTime = 0
-            updateNowPlaying()
-        } catch {
-            print("Error loading audio: \(error)")
+        currentTime = 0
+        Task { @MainActor in
+            do {
+                self.player = try AVAudioPlayer(contentsOf: track.url)
+                self.player?.delegate = self
+                self.player?.prepareToPlay()
+                self.duration = self.player?.duration ?? 1
+                self.updateNowPlaying()
+                if autoPlay { self.play() }
+            } catch {
+                print("Error loading audio: \(error)")
+            }
         }
     }
 

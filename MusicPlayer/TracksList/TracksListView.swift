@@ -6,24 +6,25 @@ struct TracksListView: View {
     @Environment(AudioPlayerManager.self) private var player
     enum PickerMode { case files, folder }
     @State private var pickerMode: PickerMode? = nil
-    @State private var showFullPlayer = false
     @State private var editMode: EditMode = .inactive
     @State private var selection = Set<UUID>()
-    @State private var navPath: [Track] = []
 
     var isEditing: Bool { editMode == .active }
 
     var body: some View {
-        NavigationStack(path: $navPath) {
+        NavigationStack {
             Group {
                 if viewModel.tracks.isEmpty {
                     FullScreenEmptyState(icon: "music.note", title: "No Tracks", message: "Tap + to add tracks from your files")
                 } else {
                     List(selection: $selection) {
                         ForEach(viewModel.tracks) { track in
-                            NavigationLink(value: track) {
+                            Button {
+                                player.load(track, autoPlay: true)
+                            } label: {
                                 TrackRowView(track: track)
                             }
+                            .buttonStyle(TrackRowButtonStyle())
                             .tag(track.id)
                         }
                         .onDelete(perform: viewModel.delete)
@@ -31,9 +32,6 @@ struct TracksListView: View {
                 }
             }
             .navigationTitle("Tracks")
-            .navigationDestination(for: Track.self) { track in
-                PlayerView(track: track)
-            }
             .environment(\.editMode, $editMode)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -84,18 +82,6 @@ struct TracksListView: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .bottom) {
-                if let track = player.currentTrack, navPath.isEmpty {
-                    MiniPlayerView(track: track)
-                        .onTapGesture { showFullPlayer = true }
-                }
-            }
-            .sheet(isPresented: $showFullPlayer) {
-                if let track = player.currentTrack {
-                    PlayerView(track: track)
-                        .environment(player)
-                }
-            }
             .fileImporter(
                 isPresented: Binding(get: { pickerMode != nil }, set: { if !$0 { pickerMode = nil } }),
                 allowedContentTypes: pickerMode == .folder ? [.folder] : [.mp3],
@@ -116,50 +102,59 @@ struct TracksListView: View {
 struct MiniPlayerView: View {
     @Environment(AudioPlayerManager.self) private var player
     let track: Track
+    var onTap: () -> Void = {}
 
     var body: some View {
-        VStack(spacing: 0) {
-            GeometryReader { geo in
-                Rectangle()
-                    .fill(Color.accentColor)
-                    .frame(width: geo.size.width * CGFloat(player.duration > 0 ? player.currentTime / player.duration : 0))
-            }
-            .frame(height: 2)
+        HStack(spacing: 16) {
+            
+                HStack(spacing: 12) {
+                    Image(systemName: "music.note")
+                        .font(.title3)
+                        .foregroundColor(.accentColor)
 
-            HStack(spacing: 16) {
-                Image(systemName: "music.note")
-                    .font(.title3)
-                    .foregroundColor(.accentColor)
-
-                Text(track.name)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-
-                Spacer()
-
-                Button {
-                    player.togglePlay()
-                } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.title2)
+                    Text(track.name)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
                         .foregroundColor(.primary)
-                        .transaction { $0.animation = nil }
-                }
-                .buttonStyle(.plain)
 
-                Button {
-                    player.dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.body.weight(.medium))
-                        .foregroundColor(.secondary)
+                    Spacer()
                 }
-                .buttonStyle(.plain)
+                
+
+            Button {
+                player.togglePlay()
+            } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.title2)
+                    .foregroundColor(.primary)
+                    .transaction { $0.animation = nil }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .buttonStyle(.plain)
+
+            Button {
+                player.dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.body.weight(.medium))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
         }
-        .background(.regularMaterial)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .glassEffectIfAvailable()
+        .onTapGesture {
+            onTap()
+             
+        }
+    }
+}
+
+struct TrackRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.5 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
