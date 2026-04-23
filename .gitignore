@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Xcode user data
+xcuserdata/
+*.xcuserstate
+xcschememanagement.plist
+
+# Build artifacts
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# SPM
+.swiftpm/
