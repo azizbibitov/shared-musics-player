@@ -1,17 +1,15 @@
-//
-//  MusicPlayerMacApp.swift
-//  MusicPlayerMac
-//
-//  Created by Aziz Bibitov on 23.04.2026.
-//
-
 import SwiftUI
 
 @main
 struct MusicPlayerMacApp: App {
+    @State private var player = AudioPlayerManager()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environment(player)
         }
+        .defaultSize(width: 860, height: 580)
+        .windowResizability(.contentMinSize)
     }
 }
