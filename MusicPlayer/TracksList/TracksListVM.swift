@@ -27,6 +27,11 @@ struct Track: Identifiable, Codable, Hashable {
 @Observable
 final class TracksViewModel {
     var tracks: [Track] = []
+    private(set) var importingCount: Int = 0
+    private(set) var importTotal: Int = 0
+    private(set) var importCompleted: Int = 0
+
+    var isImporting: Bool { importingCount > 0 }
 
     private let storageKey = "saved_tracks"
     private let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -50,6 +55,8 @@ final class TracksViewModel {
             return
         }
 
+        importingCount += 1
+        importTotal += 1
         Task {
             let asset = AVURLAsset(url: destURL)
             async let duration = loadDuration(asset)
@@ -60,30 +67,45 @@ final class TracksViewModel {
             await MainActor.run {
                 self.tracks.append(track)
                 self.saveToStorage()
+                self.importCompleted += 1
+                self.importingCount -= 1
+                if self.importingCount == 0 { self.importTotal = 0; self.importCompleted = 0 }
             }
         }
     }
 
     func importFolder(from folderURL: URL) {
+        print("[importFolder] folderURL=\(folderURL)")
+        print("[importFolder] isDirectory=\(folderURL.hasDirectoryPath)")
         let accessed = folderURL.startAccessingSecurityScopedResource()
+        print("[importFolder] startAccessingSecurityScopedResource=\(accessed)")
         defer { if accessed { folderURL.stopAccessingSecurityScopedResource() } }
 
         let enumerator = FileManager.default.enumerator(at: folderURL, includingPropertiesForKeys: nil)
+        print("[importFolder] enumerator=\(String(describing: enumerator))")
         var mp3s: [URL] = []
         while let url = enumerator?.nextObject() as? URL {
+            print("[importFolder] found item: \(url.lastPathComponent) ext=\(url.pathExtension)")
             if url.pathExtension.lowercased() == "mp3" { mp3s.append(url) }
         }
+        print("[importFolder] total mp3s found: \(mp3s.count)")
         let knownSources = Set(tracks.compactMap { $0.sourceFilename })
+        let newMp3s = mp3s.filter { !knownSources.contains($0.lastPathComponent) }
 
-        for url in mp3s {
-            let sourceName = url.lastPathComponent
-            guard !knownSources.contains(sourceName) else { continue }
+        guard !newMp3s.isEmpty else { return }
+        importTotal += newMp3s.count
+        importingCount += newMp3s.count
+
+        for url in newMp3s {
             let filename = UUID().uuidString + ".mp3"
             let destURL = documentsURL.appendingPathComponent(filename)
             do {
                 try FileManager.default.copyItem(at: url, to: destURL)
             } catch {
                 print("Copy failed: \(error)")
+                importingCount -= 1
+                importCompleted += 1
+                if importingCount == 0 { importTotal = 0; importCompleted = 0 }
                 continue
             }
             Task {
@@ -94,6 +116,9 @@ final class TracksViewModel {
                 await MainActor.run {
                     self.tracks.append(track)
                     self.saveToStorage()
+                    self.importCompleted += 1
+                    self.importingCount -= 1
+                    if self.importingCount == 0 { self.importTotal = 0; self.importCompleted = 0 }
                 }
             }
         }

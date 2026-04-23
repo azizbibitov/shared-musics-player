@@ -19,11 +19,11 @@ struct RootView: View {
 
     var body: some View {
         TabView {
-            Tab("Playlists", systemImage: "music.note.list") {
-                PlaylistsView()
-            }
             Tab("Tracks", systemImage: "music.note") {
                 TracksListView()
+            }
+            Tab("Playlists", systemImage: "music.note.list") {
+                PlaylistsView()
             }
         }
         .background {
@@ -40,11 +40,11 @@ struct RootView: View {
                     GlassEffectContainer {
                         MiniPlayerView(track: track, onTap: { showFullPlayer = true })
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 21)
                     .padding(.bottom, tabBarAreaHeight + 8)
                 } else {
                     MiniPlayerView(track: track, onTap: { showFullPlayer = true })
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 21)
                         .padding(.bottom, tabBarAreaHeight + 8)
                 }
             }

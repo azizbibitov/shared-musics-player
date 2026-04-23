@@ -9,6 +9,7 @@ final class AudioPlayerManager: NSObject, AVAudioPlayerDelegate {
     var duration: TimeInterval = 1
     var currentTrack: Track?
     var isPlayerViewOpen = false
+    var loadError: String? = nil
 
     private var player: AVAudioPlayer?
     private var timer: Timer?
@@ -62,7 +63,8 @@ final class AudioPlayerManager: NSObject, AVAudioPlayerDelegate {
                 self.updateNowPlaying()
                 if autoPlay { self.play() }
             } catch {
-                print("Error loading audio: \(error)")
+                self.currentTrack = nil
+                self.loadError = "Couldn't play this track. The file may be corrupted or in an unsupported format."
             }
         }
     }

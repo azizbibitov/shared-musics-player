@@ -10,7 +10,7 @@ private struct GlassEffectModifier: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
-                .background(Capsule().fill(Color.white))
+                .background( Capsule().fill(.background))
                 .glassEffect(.regular.interactive(), in: .capsule)
         } else {
             content
