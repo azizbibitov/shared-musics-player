@@ -2,7 +2,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct TracksListView: View {
-    @State private var viewModel = TracksViewModel()
+    @Environment(TracksViewModel.self) private var viewModel
+    @Environment(MultipeerSyncManager.self) private var syncManager
     @Environment(AudioPlayerManager.self) private var player
     @State private var showFilePicker = false
     @State private var showFolderPicker = false
@@ -38,9 +39,13 @@ struct TracksListView: View {
                             viewModel.deleteByIDs(ids)
                         }
                     }
+                    .searchable(text: $searchText, prompt: "Search tracks")
+                    .refreshable {
+                        viewModel.refresh()
+                        syncManager.syncWithConnectedPeers()
+                    }
                 }
             }
-            .searchable(text: $searchText, prompt: "Search tracks")
             .navigationTitle("Tracks")
             .navigationBarTitleDisplayMode(.inline)
             .environment(\.editMode, $editMode)
@@ -49,6 +54,9 @@ struct TracksListView: View {
                     VStack(spacing: 1) {
                         HStack(spacing: 5) {
                             Text("Tracks").font(.headline)
+                            Circle()
+                                .fill(syncManager.connectedPeers.isEmpty ? Color.secondary.opacity(0.4) : Color.green)
+                                .frame(width: 7, height: 7)
                             if viewModel.isImporting {
                                 ProgressView()
                                     .scaleEffect(0.7)
@@ -147,6 +155,17 @@ struct TracksListView: View {
                     viewModel.importFolder(from: folderURL)
                 }
             )
+            .onAppear {
+                syncManager.syncWithConnectedPeers()
+            }
+            .onChange(of: viewModel.tracks.count) {
+                syncManager.syncWithConnectedPeers()
+            }
+            .safeAreaInset(edge: .bottom) {
+                if !syncManager.activeTransfers.isEmpty {
+                    TransferProgressBanner(transfers: syncManager.activeTransfers)
+                }
+            }
         }
     }
 }
@@ -198,6 +217,40 @@ struct MiniPlayerView: View {
         .onTapGesture {
             onTap()
              
+        }
+    }
+}
+
+struct TransferProgressBanner: View {
+    let transfers: [FileTransfer]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+            VStack(spacing: 8) {
+                ForEach(transfers) { transfer in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(transfer.trackName)
+                                .font(.caption)
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(Int(transfer.fraction * 100))%")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        ProgressView(value: transfer.fraction)
+                            .progressViewStyle(.linear)
+                            .tint(.accentColor)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.regularMaterial)
         }
     }
 }

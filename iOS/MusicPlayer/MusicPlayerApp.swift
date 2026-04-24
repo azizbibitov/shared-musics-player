@@ -3,11 +3,18 @@ import SwiftUI
 @main
 struct MusicPlayerApp: App {
     @State private var player = AudioPlayerManager()
+    @State private var tracksViewModel = TracksViewModel()
+    @State private var syncManager = MultipeerSyncManager()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(player)
+                .environment(tracksViewModel)
+                .environment(syncManager)
+                .onAppear {
+                    syncManager.tracksViewModel = tracksViewModel
+                }
         }
     }
 }

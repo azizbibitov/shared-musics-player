@@ -10,9 +10,7 @@ struct Track: Identifiable, Codable, Hashable {
     let sourceFilename: String?
 
     var url: URL {
-        FileManager.default
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(filename)
+        Storage.baseURL.appendingPathComponent(filename)
     }
 
     init(id: UUID = UUID(), name: String, filename: String, duration: TimeInterval?, sourceFilename: String? = nil) {
@@ -27,16 +25,19 @@ struct Track: Identifiable, Codable, Hashable {
 @Observable
 final class TracksViewModel {
     var tracks: [Track] = []
+    private(set) var tombstoneIDs: Set<UUID> = []
     private(set) var importingCount: Int = 0
     private(set) var importTotal: Int = 0
     private(set) var importCompleted: Int = 0
 
     var isImporting: Bool { importingCount > 0 }
 
-    private let storageKey = "saved_tracks"
-    private let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    private let documentsURL = Storage.baseURL
+    private var metadataURL: URL { Storage.baseURL.appendingPathComponent("tracks.json") }
+    private var tombstonesURL: URL { Storage.baseURL.appendingPathComponent("tombstones.json") }
 
     init() {
+        loadTombstones()
         loadFromStorage()
         syncDocumentsFolder()
     }
@@ -62,11 +63,17 @@ final class TracksViewModel {
             async let duration = loadDuration(asset)
             async let title = loadTitle(asset, fallback: sourceURL.deletingPathExtension().lastPathComponent)
 
-            let track = Track(name: await title, filename: filename, duration: await duration, sourceFilename: sourceURL.lastPathComponent)
+            let resolvedDuration = await duration
+            let resolvedTitle = await title
 
             await MainActor.run {
-                self.tracks.append(track)
-                self.saveToStorage()
+                if let dur = resolvedDuration {
+                    let track = Track(name: resolvedTitle, filename: filename, duration: dur, sourceFilename: sourceURL.lastPathComponent)
+                    self.tracks.append(track)
+                    self.saveToStorage()
+                } else {
+                    try? FileManager.default.removeItem(at: destURL)
+                }
                 self.importCompleted += 1
                 self.importingCount -= 1
                 if self.importingCount == 0 { self.importTotal = 0; self.importCompleted = 0 }
@@ -106,10 +113,16 @@ final class TracksViewModel {
                 let asset = AVURLAsset(url: destURL)
                 async let duration = loadDuration(asset)
                 async let title = loadTitle(asset, fallback: url.deletingPathExtension().lastPathComponent)
-                let track = Track(name: await title, filename: filename, duration: await duration, sourceFilename: url.lastPathComponent)
+                let resolvedDuration = await duration
+                let resolvedTitle = await title
                 await MainActor.run {
-                    self.tracks.append(track)
-                    self.saveToStorage()
+                    if let dur = resolvedDuration {
+                        let track = Track(name: resolvedTitle, filename: filename, duration: dur, sourceFilename: url.lastPathComponent)
+                        self.tracks.append(track)
+                        self.saveToStorage()
+                    } else {
+                        try? FileManager.default.removeItem(at: destURL)
+                    }
                     self.importCompleted += 1
                     self.importingCount -= 1
                     if self.importingCount == 0 { self.importTotal = 0; self.importCompleted = 0 }
@@ -131,13 +144,39 @@ final class TracksViewModel {
         let toDelete = tracks.filter { ids.contains($0.id) }
         toDelete.forEach { try? FileManager.default.removeItem(at: $0.url) }
         tracks.removeAll { ids.contains($0.id) }
+        tombstoneIDs.formUnion(ids)
         saveToStorage()
+        saveTombstones()
     }
 
     func deleteAll() {
+        tombstoneIDs.formUnion(tracks.map { $0.id })
         tracks.forEach { try? FileManager.default.removeItem(at: $0.url) }
         tracks.removeAll()
         saveToStorage()
+        saveTombstones()
+    }
+
+    func addSyncedTrack(_ track: Track) {
+        guard !tracks.contains(where: { $0.id == track.id }) else { return }
+        guard !tombstoneIDs.contains(track.id) else { return }
+        tracks.append(track)
+        saveToStorage()
+    }
+
+    func applyTombstones(_ ids: Set<UUID>) {
+        let toDelete = tracks.filter { ids.contains($0.id) }
+        guard !toDelete.isEmpty else { return }
+        toDelete.forEach { try? FileManager.default.removeItem(at: $0.url) }
+        tracks.removeAll { ids.contains($0.id) }
+        tombstoneIDs.formUnion(ids)
+        saveToStorage()
+        saveTombstones()
+    }
+
+    func refresh() {
+        loadFromStorage()
+        syncDocumentsFolder()
     }
 
     private func syncDocumentsFolder() {
@@ -184,13 +223,24 @@ final class TracksViewModel {
 
     private func saveToStorage() {
         guard let data = try? JSONEncoder().encode(tracks) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        try? data.write(to: metadataURL, options: .atomic)
     }
 
     private func loadFromStorage() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
+        guard let data = try? Data(contentsOf: metadataURL),
               let saved = try? JSONDecoder().decode([Track].self, from: data) else { return }
         tracks = saved.filter { FileManager.default.fileExists(atPath: $0.url.path) }
         if tracks.count != saved.count { saveToStorage() }
+    }
+
+    private func saveTombstones() {
+        guard let data = try? JSONEncoder().encode(Array(tombstoneIDs)) else { return }
+        try? data.write(to: tombstonesURL, options: .atomic)
+    }
+
+    private func loadTombstones() {
+        guard let data = try? Data(contentsOf: tombstonesURL),
+              let ids = try? JSONDecoder().decode([UUID].self, from: data) else { return }
+        tombstoneIDs = Set(ids)
     }
 }

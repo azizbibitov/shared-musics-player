@@ -1,8 +1,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import MultipeerConnectivity
 
 struct TracksListView: View {
-    @State private var viewModel = TracksViewModel()
+    @Environment(TracksViewModel.self) private var viewModel
+    @Environment(MultipeerSyncManager.self) private var syncManager
     @Environment(AudioPlayerManager.self) private var player
     @State private var showFilePicker = false
     @State private var showFolderPicker = false
@@ -54,15 +56,49 @@ struct TracksListView: View {
         .navigationTitle("Tracks")
         .navigationSubtitle(subtitleText)
         .toolbar {
-            if !selectedIDs.isEmpty {
-                ToolbarItem(placement: .destructiveAction) {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    viewModel.refresh()
+                    syncManager.syncWithConnectedPeers()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .help("Reload library and sync with nearby devices")
+                .disabled(viewModel.isImporting)
+            }
+
+            ToolbarItem(placement: .navigation) {
+                let connected = !syncManager.connectedPeers.isEmpty
+                let names = syncManager.connectedPeers.map { $0.displayName }.joined(separator: ", ")
+                Label(
+                    connected ? "Connected to \(names)" : "No nearby devices",
+                    systemImage: connected ? "dot.radiowaves.left.and.right" : "dot.radiowaves.left.and.right"
+                )
+                .foregroundStyle(connected ? Color.green : Color.secondary.opacity(0.5))
+                .help(connected ? "Connected to \(names)" : "Looking for nearby devices...")
+            }
+
+            ToolbarItem(placement: .destructiveAction) {
+                Menu {
+                    if !selectedIDs.isEmpty {
+                        Button(role: .destructive) {
+                            viewModel.deleteByIDs(selectedIDs)
+                            selectedIDs.removeAll()
+                        } label: {
+                            Label("Delete Selected (\(selectedIDs.count))", systemImage: "trash")
+                        }
+                    }
                     Button(role: .destructive) {
-                        viewModel.deleteByIDs(selectedIDs)
+                        viewModel.deleteAll()
                         selectedIDs.removeAll()
                     } label: {
-                        Label("Delete Selected (\(selectedIDs.count))", systemImage: "trash")
+                        Label("Delete All", systemImage: "trash.fill")
                     }
+                } label: {
+                    Image(systemName: "trash")
                 }
+                .disabled(viewModel.tracks.isEmpty)
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -100,6 +136,17 @@ struct TracksListView: View {
                 viewModel.importFolder(from: folderURL)
             }
         )
+        .onAppear {
+            syncManager.syncWithConnectedPeers()
+        }
+        .onChange(of: viewModel.tracks.count) {
+            syncManager.syncWithConnectedPeers()
+        }
+        .safeAreaInset(edge: .bottom) {
+            if !syncManager.activeTransfers.isEmpty {
+                TransferProgressBanner(transfers: syncManager.activeTransfers)
+            }
+        }
     }
 
     private var subtitleText: String {
@@ -111,6 +158,40 @@ struct TracksListView: View {
         return searchText.isEmpty
             ? "\(total) track\(total == 1 ? "" : "s")"
             : "\(shown) of \(total)"
+    }
+}
+
+struct TransferProgressBanner: View {
+    let transfers: [FileTransfer]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+            VStack(spacing: 8) {
+                ForEach(transfers) { transfer in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(transfer.trackName)
+                                .font(.caption)
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(Int(transfer.fraction * 100))%")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        ProgressView(value: transfer.fraction)
+                            .progressViewStyle(.linear)
+                            .tint(.accentColor)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.regularMaterial)
+        }
     }
 }
 

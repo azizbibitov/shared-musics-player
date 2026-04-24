@@ -35,6 +35,13 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Used to sync your music library with nearby devices.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_azico-music._tcp</string>
+		<string>_azico-music._udp</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
